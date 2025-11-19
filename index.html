@@ -1,93 +1,145 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Upload CSV</title>
-
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Upload CSV Pegawai</title>
   <style>
-    body {
-      font-family: Arial, sans-serif; 
-      padding: 30px;
-      max-width: 600px;
-      margin: auto;
-    }
-    .card {
-      padding: 20px;
-      border-radius: 10px;
-      border: 1px solid #ddd;
-      background: #fafafa;
-    }
-    button {
-      padding: 8px 15px;
-      border: none;
-      background: #007bff;
-      color: white;
-      border-radius: 5px;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-    button:hover { background: #0056b3; }
+    body{font-family:Inter,system-ui,Arial,sans-serif;max-width:900px;margin:28px auto;padding:0 16px;color:#222}
+    .card{border:1px solid #e6e6e6;border-radius:10px;padding:18px;background:#fff}
+    input[type=file]{margin-bottom:12px}
+    button{background:#0069ff;color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #f1f1f1;padding:8px;text-align:left;font-size:13px}
+    .status{margin-top:12px;font-weight:600}
+    .muted{color:#666;font-size:13px}
   </style>
-
 </head>
 <body>
-
-  <h2>Upload File CSV ke Database</h2>
-
+  <h1>Upload CSV Pegawai</h1>
   <div class="card">
-    <input type="file" id="fileInput" accept=".csv" /><br />
-    <button id="uploadBtn">Upload CSV</button>
+    <p class="muted">File CSV harus memiliki header: <code>nomor_surat,nama_pegawai,nip,status_verifikasi,created_at,jabatan,perihal</code></p>
 
-    <p id="status" style="margin-top: 15px; font-weight: bold;"></p>
+    <input id="fileInput" type="file" accept=".csv" />
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="previewBtn">Preview CSV</button>
+      <button id="uploadBtn" disabled>Upload ke Database</button>
+    </div>
+
+    <div id="previewContainer"></div>
+    <div id="status" class="status"></div>
   </div>
 
-  <script>
-    document.getElementById("uploadBtn").addEventListener("click", uploadCSV);
+<script>
+const BACKEND_URL = "https://railwayuploadfixed-production.up.railway.app"; // <-- ganti kalau perlu
 
-    async function uploadCSV() {
-      const fileInput = document.getElementById("fileInput");
-      const status = document.getElementById("status");
+const fileInput = document.getElementById('fileInput');
+const previewBtn = document.getElementById('previewBtn');
+const uploadBtn = document.getElementById('uploadBtn');
+const previewContainer = document.getElementById('previewContainer');
+const statusEl = document.getElementById('status');
 
-      if (!fileInput.files.length) {
-        status.textContent = "Silakan pilih file CSV terlebih dahulu!";
-        status.style.color = "red";
-        return;
-      }
+let parsedRows = [];
+let parsedHeaders = [];
 
-      const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
+function parseCSVText(text) {
+  // gunakan split sederhana; cocok untuk CSV tanpa commas dalam field.
+  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+  if (lines.length === 0) return { headers: [], rows: [] };
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = lines.slice(1).map(line => {
+    const cols = line.split(',').map(c => c.trim());
+    const obj = {};
+    headers.forEach((h,i)=> obj[h]= cols[i] ?? '');
+    return obj;
+  });
+  return { headers, rows };
+}
 
-      status.textContent = "Mengupload...";
-      status.style.color = "blue";
+previewBtn.addEventListener('click', async () => {
+  statusEl.textContent = '';
+  previewContainer.innerHTML = '';
+  parsedRows = []; parsedHeaders = [];
 
-      try {
-        const response = await fetch(
-          "https://railwayuploadfixed-production.up.railway.app/upload-csv",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
+  const f = fileInput.files[0];
+  if (!f) { statusEl.textContent = 'Pilih file CSV terlebih dahulu'; statusEl.style.color='red'; return; }
 
-        if (!response.ok) {
-          status.textContent = "Upload gagal! (Server error)";
-          status.style.color = "red";
-          console.log(await response.text());
-          return;
-        }
+  const text = await f.text();
+  const { headers, rows } = parseCSVText(text);
 
-        const result = await response.json();
-        status.textContent = result.message || "Upload berhasil!";
-        status.style.color = "green";
+  if (!headers.length) { statusEl.textContent = 'File kosong atau format tidak valid'; statusEl.style.color='red'; return; }
 
-      } catch (err) {
-        console.error(err);
-        status.textContent = "Tidak dapat terhubung ke server!";
-        status.style.color = "red";
-      }
+  parsedHeaders = headers; parsedRows = rows;
+
+  // Validasi header minimal
+  const expected = ['nomor_surat','nama_pegawai','nip','status_verifikasi','created_at','jabatan','perihal'];
+  const missing = expected.filter(h => !headers.includes(h));
+  if (missing.length) {
+    statusEl.innerHTML = 'Header CSV tidak lengkap. Hilangkan spasi dan pastikan header ada: <code>' + expected.join(',') + '</code>';
+    statusEl.style.color='red';
+    uploadBtn.disabled = true;
+    return;
+  }
+
+  // Tampilkan preview (maks 50 baris)
+  const max = Math.min(rows.length, 50);
+  let html = `<p class="muted">Preview ${rows.length} baris — menampilkan ${max} baris pertama</p>`;
+  html += '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  for (let i=0;i<max;i++){
+    const r = rows[i];
+    html += '<tr>' + headers.map(h=>`<td>${escapeHtml(r[h] ?? '')}</td>`).join('') + '</tr>';
+  }
+  html += '</tbody></table>';
+  previewContainer.innerHTML = html;
+  statusEl.textContent = 'Preview siap — klik Upload ke Database untuk menyimpan.';
+  statusEl.style.color = 'green';
+  uploadBtn.disabled = false;
+});
+
+uploadBtn.addEventListener('click', async () => {
+  const f = fileInput.files[0];
+  if (!f) { statusEl.textContent='Pilih file CSV terlebih dahulu'; statusEl.style.color='red'; return; }
+
+  uploadBtn.disabled = true;
+  previewBtn.disabled = true;
+  statusEl.textContent = 'Mengupload...'; statusEl.style.color='blue';
+
+  try {
+    const form = new FormData();
+    form.append('file', f);
+
+    const res = await fetch(BACKEND_URL + '/upload-csv', {
+      method: 'POST',
+      body: form
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(()=>null);
+      statusEl.textContent = 'Upload gagal — server merespon ' + res.status;
+      statusEl.style.color='red';
+      console.error('server error body:', text);
+      uploadBtn.disabled = false;
+      previewBtn.disabled = false;
+      return;
     }
-  </script>
 
+    const data = await res.json().catch(()=>({}));
+    statusEl.textContent = data.message || 'Upload berhasil!';
+    statusEl.style.color='green';
+    uploadBtn.disabled = true;
+    previewBtn.disabled = false;
+
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Gagal terhubung ke server — cek console/network.';
+    statusEl.style.color='red';
+    uploadBtn.disabled = false;
+    previewBtn.disabled = false;
+  }
+});
+
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
+</script>
 </body>
 </html>
