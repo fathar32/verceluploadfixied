@@ -52,7 +52,7 @@ document.getElementById("formUpload").addEventListener("submit", async function 
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch("https://railwayuploadfixed-production.up.railway.app/upload-csv", {
+    const response = await fetch("https://railwayuploadfixed-production.up.railway.app", {
         method: "POST",
         body: formData
     });
