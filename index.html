@@ -32,7 +32,7 @@
   </div>
 
 <script>
-const BACKEND_URL = "https://railwayuploadnew-production.up.railway.app"; // <-- ganti kalau perlu
+const BACKEND_URL = "https://railwayuploadnew-production.up.railway.app"; // <-- backend URL
 
 const fileInput = document.getElementById('fileInput');
 const previewBtn = document.getElementById('previewBtn');
@@ -44,9 +44,8 @@ let parsedRows = [];
 let parsedHeaders = [];
 
 function parseCSVText(text) {
-  // gunakan split sederhana; cocok untuk CSV tanpa commas dalam field.
   const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-  if (lines.length === 0) return { headers: [], rows: [] };
+  if (!lines.length) return { headers: [], rows: [] };
   const headers = lines[0].split(',').map(h => h.trim());
   const rows = lines.slice(1).map(line => {
     const cols = line.split(',').map(c => c.trim());
@@ -72,7 +71,6 @@ previewBtn.addEventListener('click', async () => {
 
   parsedHeaders = headers; parsedRows = rows;
 
-  // Validasi header minimal
   const expected = ['nomor_surat','nama_pegawai','nip','status_verifikasi','created_at','jabatan','perihal'];
   const missing = expected.filter(h => !headers.includes(h));
   if (missing.length) {
@@ -82,7 +80,6 @@ previewBtn.addEventListener('click', async () => {
     return;
   }
 
-  // Tampilkan preview (maks 50 baris)
   const max = Math.min(rows.length, 50);
   let html = `<p class="muted">Preview ${rows.length} baris — menampilkan ${max} baris pertama</p>`;
   html += '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
@@ -99,11 +96,16 @@ previewBtn.addEventListener('click', async () => {
 
 uploadBtn.addEventListener('click', async () => {
   const f = fileInput.files[0];
-  if (!f) { statusEl.textContent='Pilih file CSV terlebih dahulu'; statusEl.style.color='red'; return; }
+  if (!f) { 
+    statusEl.textContent='Pilih file CSV terlebih dahulu'; 
+    statusEl.style.color='red'; 
+    return; 
+  }
 
   uploadBtn.disabled = true;
   previewBtn.disabled = true;
-  statusEl.textContent = 'Mengupload...'; statusEl.style.color='blue';
+  statusEl.textContent = 'Mengupload...'; 
+  statusEl.style.color='blue';
 
   try {
     const form = new FormData();
@@ -114,17 +116,24 @@ uploadBtn.addEventListener('click', async () => {
       body: form
     });
 
+    // ✅ Tambahan fallback JSON / text
+    let data = {};
+    try {
+      data = await res.json();
+    } catch(e) {
+      const text = await res.text();
+      data = { message: text };
+    }
+
     if (!res.ok) {
-      const text = await res.text().catch(()=>null);
       statusEl.textContent = 'Upload gagal — server merespon ' + res.status;
       statusEl.style.color='red';
-      console.error('server error body:', text);
+      console.error('server error body:', data.message);
       uploadBtn.disabled = false;
       previewBtn.disabled = false;
       return;
     }
 
-    const data = await res.json().catch(()=>({}));
     statusEl.textContent = data.message || 'Upload berhasil!';
     statusEl.style.color='green';
     uploadBtn.disabled = true;
@@ -139,7 +148,9 @@ uploadBtn.addEventListener('click', async () => {
   }
 });
 
-function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
+function escapeHtml(s){ 
+  return (s+'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); 
+}
 </script>
 </body>
 </html>
